@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Attendance Calculator</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; }
+    h1 { color: #333; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }
+    th, td { padding: 8px 12px; border: 1px solid #ccc; text-align: center; }
+    th { background: #eee; }
+    .summary { margin-top: 20px; padding: 15px; background: #fff; border: 1px solid #ccc; }
+    button { padding: 8px 16px; margin-top: 10px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Attendance Calculator (API Integrated)</h1>
+
+  <label>EmpId: <input type="number" id="empId" value="283"></label>
+  <label>From: <input type="text" id="fromDate" value="01/09/2025"></label>
+  <label>To: <input type="text" id="toDate" value="04/09/2025"></label>
+  <button onclick="fetchAttendance()">Load Attendance</button>
+
+  <table id="attendanceTable">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>In Time</th>
+        <th>Out Time</th>
+        <th>Worked Hours</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div class="summary" id="summary"></div>
+
+  <script>
+    function timeToSeconds(t) {
+      const [h, m, s] = t.split(":").map(Number);
+      return h * 3600 + m * 60 + s;
+    }
+
+    function secondsToHMS(sec) {
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      return [h, m, s].map(v => String(v).padStart(2, "0")).join(":");
+    }
+
+    async function fetchAttendance() {
+      const empId = document.getElementById("empId").value;
+      const from = document.getElementById("fromDate").value;
+      const to = document.getElementById("toDate").value;
+      const url = `https://demo.servergi.com:8071/DashBoardG6APIGIVEMP/Api/MobileEmpLeaveApply/GetMEmpAttendance?EmpId=${empId}&AppFrom=${from}&AppTo=${to}`;
+
+      try {
+        const res = await fetch(url);
+        console.log(res);
+        
+        const data = await res.json();
+        renderTable(data.Table1);
+      } catch (err) {
+        alert("Error fetching data: " + err);
+      }
+    }
+
+    function renderTable(records) {
+      const tbody = document.querySelector("#attendanceTable tbody");
+      tbody.innerHTML = "";
+      let totalSeconds = 0;
+      let days = 0;
+
+      const grouped = {};
+      records.forEach(r => {
+        if (!grouped[r.AttDate]) grouped[r.AttDate] = [];
+        grouped[r.AttDate].push(r);
+      });
+
+      Object.keys(grouped).forEach(date => {
+        const entries = grouped[date];
+        let inTime = null, outTime = null;
+
+        entries.forEach(e => {
+          if (e.Status === "P") {
+            if (!inTime) inTime = e.InTime;
+            outTime = e.OutTime;
+          } else if (e.Status === "RE") {
+            if (e.OutTime === "00:00:00") {
+              outTime = e.InTime;
+            } else {
+              outTime = e.OutTime;
+            }
+          }
+        });
+
+        if (inTime && outTime) {
+          const worked = timeToSeconds(outTime) - timeToSeconds(inTime);
+          totalSeconds += worked;
+          days++;
+
+          const row = `<tr>
+            <td>${date}</td>
+            <td>${inTime}</td>
+            <td>${outTime}</td>
+            <td>${secondsToHMS(worked)}</td>
+          </tr>`;
+          tbody.insertAdjacentHTML("beforeend", row);
+        }
+      });
+
+      const avg = totalSeconds / days;
+      const summaryDiv = document.getElementById("summary");
+
+      summaryDiv.innerHTML = `
+        <b>Total Worked:</b> ${secondsToHMS(totalSeconds)} <br>
+        <b>Average:</b> ${secondsToHMS(Math.floor(avg))} <br>
+      `;
+
+      // Required OutTime today for 8h avg
+      const targetAvg = 8 * 3600;
+      const targetTotal = targetAvg * days;
+      const requiredToday = targetTotal - (totalSeconds - avg);
+      summaryDiv.innerHTML += `<b>Required Today for 8h avg:</b> ${secondsToHMS(Math.max(requiredToday,0))}`;
+    }
+  </script>
+</body>
+</html>
